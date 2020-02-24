@@ -89,8 +89,8 @@ train %>% group_by(sex, age_group, survived) %>% tally() %>%
   ggplot(data= . , aes(axis1 = sex, axis2 = age_group, axis3 = survived, y = n)) +
   geom_alluvium(aes(fill = survived), width = 0, knot.pos = 0) +
   guides(fill = F) +
-  geom_stratum(width = 0.3, infer.label = T) +
+  geom_stratum(width = 0.1, infer.label = T) +
   geom_label(stat = "stratum", infer.label = T) +
-  scale_x_continuous(breaks = c(1,2,3) , labels = c("sex, age group", "survived")) +
+  scale_x_continuous(breaks = c(1,2,3) , labels = c("sex", "age group", "survived")) +
   theme_minimal()
             
