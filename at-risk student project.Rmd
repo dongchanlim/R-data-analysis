@@ -46,8 +46,8 @@ library(rattle)
 
 ```{r load_data, include = FALSE}
 # Load the data
-student_new <- fread('https://raw.githubusercontent.com/BYUIDSS/advising_studentriskW19/master/raw_data/student_new.csv?token=AKKUOQD5G2RAK77JUELSWFK6JWZAU',stringsAsFactors = F)
-advising_new <- fread('https://raw.githubusercontent.com/BYUIDSS/advising_studentriskW19/master/raw_data/advising_new.csv?token=AKKUOQDPLAWQTEBQ7XYBGFC6JWY54',stringsAsFactors = F)
+student_new <- fread('https://raw.githubusercontent.com/BYUIDSS/advising_studentriskW19/master/raw_data/student_new.csv?token=AKKUOQEY5H2TZBA4BKOWGDS6L74DW',stringsAsFactors = F)
+advising_new <- fread('https://raw.githubusercontent.com/BYUIDSS/advising_studentriskW19/master/raw_data/advising_new.csv?token=AKKUOQGHOCQVMGHDPIMY5JK6L74CE',stringsAsFactors = F)
 ```
 
 # 2. EDA (Expolatory Data Analysis)
@@ -81,7 +81,7 @@ advising_new <- sapply(advising_new, function(x) {ifelse(is.character(x) & nchar
 
 ```{r missing_value, fig.show = 'hide'}
 missing_student <- plot_missing(student_new, missing_only = T, theme_config = list(legend.position = "right"), ggtheme = theme_light(), title = "student_new missing") %>% ggplotGrob()
-missing_advising <- plot_missing(advising_new, theme_config = list(legend.position = "right"), ggtheme = theme_light(). title = "advising_new missing") %>% ggplotGrob()
+missing_advising <- plot_missing(advising_new, theme_config = list(legend.position = "right"), ggtheme = theme_light(), title = "advising_new missing") %>% ggplotGrob()
 ```
 
 ```{r missing_result, fig.height= 6}
@@ -223,7 +223,7 @@ joining_key <- student_new[,which(colnames(student_new) %in% colnames(advising_n
 advising_student <- 
   left_join(advising_new, student_new, by = joining_key)
 
-datatable(advising_student %>% head(100), options = list(scrollX = T))
+# datatable(advising_student %>% head(100), options = list(scrollX = T))
 ```
 
 ## - Enrollment Status (Target)
@@ -458,7 +458,7 @@ advising_student_fs %>%
             enrollment_status = head(enrollment_status, 1)) %>% 
   ungroup()
 
-datatable(advising_student_final,)
+# datatable(advising_student_final,)
 ```
 
 # 5. Modeling
