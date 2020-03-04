@@ -4,27 +4,25 @@ library(stringr)
 library(DataExplorer)
 library(data.table)
 library(janitor)
+library(ggalluvial)
+library(ggExtra)
+library(quantreg)
 library(caret)
 library(xgboost)
-library(ggalluvial)
 
-setwd("C:/Users/dchan/Downloads/titanic")
+setwd("C:/Users/dchan/Desktop/Project2/titanic")
 
-# clean variable(column name)
 train <- fread("train.csv") %>% clean_names()
 test <- fread("test.csv") %>% clean_names()
-
-# change empty string as NA
-train$cabin[nchar(train$cabin) == 0] <- NA # basic R
-tain <- train %>% 
-  mutate(cabin = ifelse(cabin %>% nchar() == 0, NA, cabin)) # tidyverse
-test$cabin[nchar(train$cabin) == 0] <- NA
+train$cabin[nchar(train$cabin) == 0] <- NA
+test$cabin[nchar(test$cabin) == 0] <- NA
 test$survived <- NA
+# test %>% mutate(survived = NA)
 
 titanic <- rbind(train, test)
-# colnames col_num identical
 
-# attributes of data
+colSums(is.na(titanic))
+
 for (i in c(train,test)){
   str(i)
   summary(i)
@@ -33,71 +31,27 @@ for (i in c(train,test)){
 }
 
 str(train)
+summrary(train)
+glimpse(train)
+..
 str(test)
-
-missing_clock_plot <-  function(x){
-  colSums(is.na(x)) %>% 
-    data.frame() %>% 
-    rownames_to_column() %>%
-    mutate(pct = ./nrow(x)) %>% 
-    ggplot(aes(x = rowname, y = .)) +
-    geom_text(aes(label = ifelse(pct == 0, "", paste(round(pct,2) * 100,"%")), size = 5), show.legend = F) +
-    geom_bar(stat = "identity", fill = "red", alpha = 0.5) +
-    coord_polar(theta = "x") +
-    labs(x = "Missing number", y = "Variables", title = "Missing Value per Variable") +
-    theme_minimal() +
-    theme(panel.grid.major.y = element_blank(), axis.text.y = element_blank(), axis.text.x = element_text(size = 10, family = "sans"))
-}
-
-missing_clock_plot(train)
-missing_clock_plot(test)  
-missing_clock_plot(titanic)
-
-
-train %>% 
-  group_by(survived) %>% 
-  tally() %>% 
-  ungroup() %>% 
-  mutate(prop = n/sum(n), ymax = cumsum(n), ymin = c(0, head(ymax, -1)), label = paste(round(prop,2)*100,"%"), label_position = (ymax + ymin)/2) %>% 
-  ggplot() +
-  geom_rect(aes(xmin = 1, xmax = 2, ymin = ymin, ymax = ymax, fill = factor(survived))) +
-  geom_label(x = 1.5, aes(color = factor(survived), label = label, y = label_position), size = 7) +
-  coord_polar(theta = "y") +
-  xlim(c(0,2)) +
-  theme_void() +
-  scale_color_brewer(palette = 1) +
-  scale_fill_brewer(palette=1) +
-  theme(legend.position = "none") +
-  annotate("text", label = "Unsurvived VS Survived", x = 0, y = 0, size = 8, color = "gray")
-
-train %>% 
-  ggplot(aes(x = sex, y = title)) +
-  geom_count(aes(size = ..prop..), color = "gray", alpha = .5) +
-  geom_count(aes(size = ..prop.., group = 1, color = "red")) +
-  geom_text(data = train %>% group_by(sex, title) %>% tally(), aes(x = sex, y = title, label = n)) +
-  scale_size_area(max_size = 10, guide = F) +
-  guides(color = F) +
-  theme_minimal() 
-
-train %>% group_by(sex, age_group, survived) %>% tally() %>% 
-  ggplot(data= . , aes(axis1 = sex, axis2 = age_group, axis3 = survived, y = n)) +
-  geom_alluvium(aes(fill = survived), width = 0, knot.pos = 0) +
-  guides(fill = F) +
-  geom_stratum(width = 0.1, infer.label = T) +
-  geom_label(stat = "stratum", infer.label = T) +
-  scale_x_continuous(breaks = c(1,2,3) , labels = c("sex", "age group", "survived")) +
-  theme_minimal()
+dim(test)[1]
+dim(test)[2]
+nrow(test)
+ncol(test)
 
 # Feature Engineering
+
+## age group
+
+titanic <- titanic %>% 
+  mutate(age_group = age %>% cut(breaks = c(0,20,40,60,80), labels = c("minor","young adult","mid-age","aged")))
 
 ## Pclass
 
 titanic <- titanic %>% 
   mutate(pclass = pclass %>% factor(levels = c(1,2,3), labels = c("high","mid","low")))
 
-## age group
-titanic <- titanic %>% 
-  mutate(age_group = age %>% cut(breaks = c(0,20,40,60,80), labels = c("minor","young adult","mid-age","aged")))
 
 ## title 
 titanic <- titanic %>% 
@@ -134,14 +88,44 @@ titanic$fa[titanic$fa %>% is.na()] <-  titanic$family[titanic$fa %>% is.na()]
 titanic <- titanic %>% 
   mutate(fa = ifelse(fa == "alone", "alone", "family"))
 
+# # cabin alphabet
+# 
+# titanic <- titanic %>% 
+#   mutate(cabin_alpha = cabin %>% str_extract("[:alpha:]+"))
+# 
+# #  occupation
+# 
+# titanic <- titanic %>% 
+#   mutate(occupation = cabin %>% str_count("[:alnum:]+"))
+# 
+# # raw fare
+# 
+# titanic <- titanic %>% 
+#   mutate(occu_per_fare = fare/occupation)
+
 ## impute age data
 
-titanic$age[titanic$sib_sp + titanic$parch == 0] <- median(titanic$age[titanic$age_group %in% c("young adult","mid-age","aged")])
+titanic$age[titanic$sib_sp + titanic$parch == 0 & is.na(titanic$age)] <- median(titanic$age[titanic$age_group %in% c("young adult","mid-age","aged")])
 
-sum(is.na(titanic %>% select(-c(survived,cabin))))
+
+for (i in unique(titanic$title)){
+  titanic$age[titanic$title == i & is.na(titanic$age)] <- median(titanic$age[titanic$title == i ], na.rm = T)
+}
+
+## age group
 
 titanic <- titanic %>% 
   mutate(age_group = age %>% cut(breaks = c(0,20,40,60,80), labels = c("minor","young adult","mid-age","aged")))
+
+
+# embarked imputation
+
+unique(titanic$embarked)
+
+titanic %>% group_by(embarked) %>% tally()
+
+titanic$embarked[nchar(titanic$embarked) == 0 ] <- "S"
+titanic$embarked <- factor(titanic$embarked)
 
 ## title revision
 
@@ -155,16 +139,27 @@ titanic <-  titanic %>%
     title %in% c("Mr") ~ "Mr"
   ))
 
-for (i in unique(titanic$title)){
-  titanic$age[titanic$title == i & is.na(titanic$age)] <- median(titanic$age[titanic$title == i ], na.rm = T)
-}
+titanic <- titanic %>% 
+  mutate(age_group = age %>% cut(breaks = c(0,20,40,60,80), labels = c("minor","young adult","mid-age","aged")))
+
+
+# checking missing part again
+
+colSums(is.na(titanic %>% select(-c(survived,cabin))))
+
+# colSums(is.na(titanic)) %>% data.frame()
+
+sum(is.na(titanic %>% select(-c(survived,cabin)))) 
+
+where_na(titanic %>% select(-c(survived,cabin)))
 
 # Model building 
 
 # Feature Selection
 
+
 # Modeling
-ml_df <- titanic %>% filter(!is.na(survived)) %>% select(survived,pclass,sex,sib_sp,parch,fare,embarked,age_group,title,fa) 
+ml_df <- titanic %>% filter(!is.na(survived)) %>% select(survived,pclass,age,sex,sib_sp,parch,fare,embarked,age_group,title,fa) 
 # ml_df <- ml_df %>% mutate_if(is.character, as.factor) %>% mutate_if(is.factor, function(x) {as.integer(x) - 1})
 
 set.seed(1000)
@@ -176,22 +171,111 @@ test <- ml_df[-model,]
 
 tr_label <- train$survived 
 ts_label <- test$survived 
+total_label <- ml_df$survived
 new_tr <- model.matrix(~.+0, data = train %>% select(-survived), with = F)
 new_ts <- model.matrix(~.+0, data = test %>% select(-survived), with = F)
+new_total <- model.matrix(~.+0, data = ml_df %>% select(-survived), with = F)
 
 dtrain <- xgb.DMatrix(new_tr, label = tr_label)
 dtest <- xgb.DMatrix(new_ts, label = ts_label)
+dtotal <- xgb.DMatrix(new_total, label = total_label)
 
-xgb.cv(data = dtrain, label = tr_label, nfold = 20, nround = 20, objective = "binary:logistic")
 
-xgb_model <- xgb.train(data=dtrain, max_depth= ncol(dtrain), eta= 0.1, nthread = 20, nrounds= 20, objective = "binary:logistic")
+
+xgb_grid_1 = expand.grid(
+  eta = c(0.01, 0.001, 0.0001),
+  max_depth = c(2, 4, 6, 8, 10)
+)
+
+xgb_trcontrol_1 <- trainControl(method = "repeated_cv", number = 10, repeats = 50, search="grid")
+
+xgb_model <- xgb.train(data=dtrain,  objective = "binary:logistic", nrounds = 10, trControl = xgb_trcontrol_1,  tuneGrid = xgb_grid_1)
+xgb_model2 <- xgboost(data = new_tr, label = tr_label, objective = "binary:logistic", nrounds = 500, verbose = 2, tuneGrid = xgb_grid_1, early_stopping_rounds = 100)
 imp_matrix <- xgb.importance (feature_names = colnames(new_tr),model = xgb_model)
 xgb.plot.importance(imp_matrix[1:10])
+xgb.plot.tree(model = xgb_model2, trees = 0, show_node_id = TRUE)
+
 
 # Importance of dimensional reduction!
 dtrain %>% colnames()
 dtest %>% colnames()
 
 test <- test %>% mutate(pred_pct = predict(xgb_model, dtest), pred = ifelse(pred_pct > 0.5, 1, 0))
+test <- test %>% mutate(pred_pct2 = predict(xgb_model2, dtest), pred2 = ifelse(pred_pct > 0.5, 1, 0))
 
 confusionMatrix(factor(test$pred), factor(test$survived))
+confusionMatrix(factor(test$pred2), factor(test$survived))
+
+ml_df <- ml_df %>% mutate(pred_pct = predict(xgb_model, dtotal), pred = ifelse(pred_pct > 0.5, 1, 0))
+ml_df <- ml_df %>% mutate(pred_pct2 = predict(xgb_model2, dtotal), pred2 = ifelse(pred_pct2 > 0.5, 1, 0))
+
+confusionMatrix(factor(ml_df$pred), factor(ml_df$survived))
+confusionMatrix(factor(ml_df$pred2), factor(ml_df$survived))
+
+
+# Visualization
+
+missing_clock_plot <-  function(x){
+  colSums(is.na(x)) %>% 
+    data.frame() %>% 
+    rownames_to_column() %>%
+    mutate(pct = ./nrow(x)) %>% 
+    ggplot(aes(x = rowname, y = .)) +
+    geom_text(aes(label = ifelse(pct == 0, "", paste(round(pct,2) * 100,"%")), size = 5), show.legend = F) +
+    geom_bar(stat = "identity", fill = "red", alpha = 0.5) +
+    coord_polar(theta = "x") +
+    labs(x = "Missing number", y = "Variables", title = "Missing Value per Variable") +
+    theme_minimal() +
+    theme(panel.grid.major.y = element_blank(), axis.text.y = element_blank(), axis.text.x = element_text(size = 10, family = "sans"))
+}
+
+missing_clock_plot(train)
+missing_clock_plot(test)  
+missing_clock_plot(titanic)
+
+
+train %>% 
+  group_by(survived) %>% 
+  tally() %>% 
+  ungroup() %>% 
+  mutate(prop = n/sum(n), ymax = cumsum(n), ymin = c(0, head(ymax, -1)), label = paste(round(prop,2)*100,"%"), label_position = (ymax + ymin)/2) %>% 
+  ggplot() +
+  geom_rect(aes(xmin = 1, xmax = 2, ymin = ymin, ymax = ymax, fill = factor(survived))) +
+  geom_label(x = 1.5, aes(color = factor(survived), label = label, y = label_position), size = 7) +
+  coord_polar(theta = "y") +
+  xlim(c(0,2)) +
+  theme_void() +
+  scale_color_brewer(palette = 1) +
+  scale_fill_brewer(palette=1) +
+  theme(legend.position = "none") +
+  annotate("text", label = "Unsurvived VS Survived", x = 0, y = 0, size = 8, color = "gray")
+
+
+titanic %>% 
+  ggplot(aes(x = sex, y = title)) +
+  geom_count(aes(size = ..prop..), color = "gray", alpha = .5) +
+  geom_count(aes(size = ..prop.., group = 1, color = "red")) +
+  geom_text(data = train %>% group_by(sex, title) %>% tally(), aes(x = sex, y = title, label = n)) +
+  scale_size_area(max_size = 25, guide = F) +
+  guides(color = F) +
+  theme_minimal() 
+
+
+titanic %>% group_by(sex, age_group, survived) %>% tally() %>% 
+  ggplot(data= . , aes(axis1 = sex, axis2 = age_group, axis3 = survived, y = n)) +
+  geom_alluvium(aes(fill = survived), width = 0, knot.pos = 0) +
+  guides(fill = F) +
+  geom_stratum(width = 0.1, infer.label = T) +
+  geom_label(stat = "stratum", infer.label = T) +
+  scale_x_continuous(breaks = c(1,2,3) , labels = c("sex", "age group", "survived")) +
+  theme_minimal()
+
+
+
+titanic %>% ggplot(aes(x = factor(pclass), y = fare)) +
+  geom_jitter(aes(color = factor(pclass)), alpha = 0.5) +
+  geom_boxplot(aes(color = factor(pclass)), width = 0.1) +
+  geom_violin(aes(fill = factor(pclass))) +
+  theme_minimal() +
+  scale_color_brewer(palette = 3) +
+  scale_fill_brewer(palette = 3)
