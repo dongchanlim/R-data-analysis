@@ -9,8 +9,9 @@ library(ggExtra)
 library(quantreg)
 library(caret)
 library(xgboost)
+library(doParallel)
 
-setwd("C:/Users/dchan/Desktop/Project2/titanic")
+setwd("C:/Users/ldch90/Downloads/titanic")
 
 train <- fread("train.csv") %>% clean_names()
 test <- fread("test.csv") %>% clean_names()
@@ -30,15 +31,6 @@ for (i in c(train,test)){
   dim(i)
 }
 
-str(train)
-summrary(train)
-glimpse(train)
-..
-str(test)
-dim(test)[1]
-dim(test)[2]
-nrow(test)
-ncol(test)
 
 # Feature Engineering
 
@@ -164,6 +156,7 @@ ml_df <- titanic %>% filter(!is.na(survived)) %>% select(survived,pclass,age,sex
 
 set.seed(1000)
 model <- createDataPartition(ml_df$survived, p = 0.7, list = F)
+# createFolds(train$survived, 10, list = F)
 train <- ml_df[model,]
 test <- ml_df[-model,]
 
@@ -180,19 +173,64 @@ dtrain <- xgb.DMatrix(new_tr, label = tr_label)
 dtest <- xgb.DMatrix(new_ts, label = ts_label)
 dtotal <- xgb.DMatrix(new_total, label = total_label)
 
+# cl <- makeCluster(3)
+# registerDoParallel(cl)
 
-
-xgb_grid_1 = expand.grid(
-  eta = c(0.01, 0.001, 0.0001),
-  max_depth = c(2, 4, 6, 8, 10)
+xgb_grid <- expand.grid(
+  nrounds = 500,
+  max_depth = c(3,6,9),
+  eta = c(0.1, 0.01, 0.001),
+  gamma = c(1),
+  colsample_bytree = c(0.5, 0.75, 1),
+  min_child_weight = c(1, 10, 15, 20),
+  subsample = c(0.5, 0.75, 1)
 )
 
-xgb_trcontrol_1 <- trainControl(method = "repeated_cv", number = 10, repeats = 50, search="grid")
+# grid_search = foreach(i = 1:nrow(xgb_grid), .combine = rbind, .packages = c("xgboost", "caret")) %dopar% {
+#   model = xgb.cv(data = new_tr,
+#                  label = tr_label,
+#                  objective = "binary:logistic", 
+#                  nrounds = 500, 
+#                  nfold = 10, metrics = "mae", 
+#                  early_stopping_rounds = 100,
+#                  params = xgb_grid[i,])
+#   data.frame(train_mae_last = unlist(model$evaluation_log[,2] %>% last),
+#              test_mae_last = unlist(model$evaluation_log[,4] %>% last))
+# }
+# 
+# stopCluster(cl)
 
-xgb_model <- xgb.train(data=dtrain,  objective = "binary:logistic", nrounds = 10, trControl = xgb_trcontrol_1,  tuneGrid = xgb_grid_1)
-xgb_model2 <- xgboost(data = new_tr, label = tr_label, objective = "binary:logistic", nrounds = 500, verbose = 2, tuneGrid = xgb_grid_1, early_stopping_rounds = 100)
+
+
+cv_matrix <- xgb.cv(data = dtrain, objective = "binary:logistic", nrounds = 500, nfold = 10, metrics = list("mae","error", "auc"), early_stopping_rounds = 100)
+
+
+xgb_trcontrol <- trainControl(method = "cv", number = 5, allowParallel = TRUE)
+params <- list(
+  booster = "gbtree",
+  objective = "binary:logistic",
+  eta = 0.2,
+  gamma = 0.1,
+  max_depth = 6,
+  min_child_weight = 1,
+  subsample = 1,
+  colsample_bytree = 1,
+  eval_metric = "mae", # rmse, rmsle, error, mae, auc
+  scale_pos_weight = 549/342
+)
+
+watchlist <- list(train = dtrain, eval = dtest)
+
+xgb_model <- xgb.train(params = params, data=dtrain, nrounds = 500, trControl = xgb_trcontrol, watchlist = watchlist, early_stopping_rounds = 100)
+xgb_model2 <- xgboost(data = new_tr, verbosity = 2, label = tr_label, objective = "binary:logistic", nrounds = 500, verbose = 2, early_stopping_rounds = 100, trControl = xgb_trcontrol)
+xgb_model3 <- train(x= new_tr, y = factor(tr_label), method = "xgbTree", trControl = xgb_trcontrol)
+
+xgb_model3$bestTune
+
 imp_matrix <- xgb.importance (feature_names = colnames(new_tr),model = xgb_model)
+imp_matrix2 <- xgb.importance (feature_names = colnames(new_tr),model = xgb_model2)
 xgb.plot.importance(imp_matrix[1:10])
+xgb.plot.importance(imp_matrix2[1:10])
 xgb.plot.tree(model = xgb_model2, trees = 0, show_node_id = TRUE)
 
 
@@ -202,16 +240,19 @@ dtest %>% colnames()
 
 test <- test %>% mutate(pred_pct = predict(xgb_model, dtest), pred = ifelse(pred_pct > 0.5, 1, 0))
 test <- test %>% mutate(pred_pct2 = predict(xgb_model2, dtest), pred2 = ifelse(pred_pct > 0.5, 1, 0))
+test <- test %>% mutate(pred3 = predict(xgb_model3, new_ts))
 
 confusionMatrix(factor(test$pred), factor(test$survived))
 confusionMatrix(factor(test$pred2), factor(test$survived))
+confusionMatrix(test$pred3, factor(test$survived))
 
 ml_df <- ml_df %>% mutate(pred_pct = predict(xgb_model, dtotal), pred = ifelse(pred_pct > 0.5, 1, 0))
 ml_df <- ml_df %>% mutate(pred_pct2 = predict(xgb_model2, dtotal), pred2 = ifelse(pred_pct2 > 0.5, 1, 0))
+ml_df <- ml_df %>% mutate(pred3 = predict(xgb_model3, new_total))
 
-confusionMatrix(factor(ml_df$pred), factor(ml_df$survived))
-confusionMatrix(factor(ml_df$pred2), factor(ml_df$survived))
-
+confusionMatrix(factor(ml_df$pred), factor(ml_df$survived)) # 91.69%
+confusionMatrix(factor(ml_df$pred2), factor(ml_df$survived)) # 91%
+confusionMatrix(ml_df$pred3, factor(ml_df$survived)) # 86%
 
 # Visualization
 
