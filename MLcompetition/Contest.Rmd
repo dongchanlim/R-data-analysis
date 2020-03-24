@@ -1,0 +1,193 @@
+---
+title: "Australian Credit Data"
+author: "Aaron Cooley"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    theme: cerulean
+    keep_md: true
+    toc: true
+    toc_width: 10
+    toc_float: true
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+pacman::p_load(data.table, janitor, tidyverse, DataExplorer, naniar, skimr, plotly, corrplot, DT, gridExtra, ggrepel, stringi, lubridate, caret, xgboost, rattle, Boruta, doParallel, ucimlr, actools, mlr)
+```
+
+
+```{r pull_data}
+australian <- read_ucimlr("australian")
+
+australian <- australian %>% 
+  mutate_at(vars(A1, A4, A5, A6, A8, A9, A10, A11, A12, A15), as.factor)
+
+australian %>% normalizeFeatures()
+```
+
+
+```{r attr_data}
+cat("australian dataset' has", dim(australian)[1], "rows and", dim(australian)[2], "columns.")
+```
+
+```{r summary_data}
+lapply(australian, typeof) %>% data.frame() %>%  t() %>%  as.data.frame() 
+```
+
+```{r missing_table}
+colSums(is.na(australian)) %>% data.frame()
+```
+
+
+
+
+# Feature Selection
+
+1. method 1 - Correlation plot
+
+```{r cor, eval=FALSE, include=TRUE}
+cor <- cor(australian %>% select_if(is.numeric))
+corrplot(cor, method = c("number"), type = "upper", tl.col = "black", order = c("hclust"), diag = T, angle = 45)
+```
+
+2. method 2 - Boruta method
+
+```{r boruta, eval=FALSE, include=TRUE}
+# Decide if a variable is important or not using Boruta
+boruta_output <- Boruta(A15 ~ ., data= australian, doTrace=2)  # perform Boruta search
+# collect Confirmed and Tentative variables
+boruta_signif <- names(boruta_output$finalDecision[boruta_output$finalDecision %in% c("Confirmed", "Tentative")])  
+boruta_signif <- getSelectedAttributes(boruta_output, withTentative = T)
+print(boruta_signif)
+plot(boruta_output, cex.axis=.7, las=2, xlab="", main="Variable Importance")  # plot variable importance
+```
+
+```{r make_task}
+task.train <- australian %>% select(-A4) %>% dplyr::slice(1:345 * 2)
+task.test <- australian %>% select(-A4) %>% dplyr::slice(1:345 * 2 - 1) 
+```
+
+
+
+
+```{r rfe}
+set.seed(1000)
+trainControl <- rfeControl(functions = rfFuncs,
+                   method = "repeatedcv",
+                   repeats = 5,
+                   verbose = FALSE,
+                   allowParallel = TRUE)
+
+train_model <- task.train
+
+lmProfile <- rfe(x= train_model, y= train_model$A15,
+                 sizes = c(1,5,10,15,20),
+                 rfeControl = trainControl)
+
+lmProfile
+```
+
+
+```{r modeling_1}
+set.seed(1000)
+InTraining <- caret::createDataPartition(task.train$A15, p = .7, list = F)
+# createFolds(train$survived, 10, list = F)
+train <- task.train %>% dplyr::slice(InTraining)
+test <- task.train %>% dplyr::slice(-InTraining)
+```
+
+
+
+
+```{r modeling_2}
+# taget setting
+tr_label <- train$A15 %>% as.numeric() -1
+ts_label <- test$A15 %>% as.numeric() -1
+total_label <- task.train$A15 %>% as.numeric() -1
+grand_total_label <- task.test$A15 %>% as.numeric() -1
+
+# model.matrix (One hot encoding)
+new_tr <- model.matrix(~.+0, data = train %>% select(-A15), with = F)
+new_ts <- model.matrix(~.+0, data = test %>% select(-A15), with = F)
+new_total <- model.matrix(~.+0, data = task.train %>% select(-A15), with = F)
+grand_new_total <- model.matrix(~.+0, data = task.test %>% select(-A15), with = F)
+# mlr::createDummyFeatures()
+```
+
+
+
+
+```{r modeling_3}
+#xgb.DMatrix
+dtrain <- xgb.DMatrix(new_tr, label = tr_label)
+dtest <- xgb.DMatrix(new_ts, label = ts_label)
+dtotal <- xgb.DMatrix(new_total, label = total_label)
+grand_dtotal <- xgb.DMatrix(grand_new_total, label = grand_total_label)
+
+#cl <- makeCluster(3)
+#registerDoParallel(cl)
+
+# xgb_grid <- expand.grid(
+#   nrounds = 500,
+#   max_depth = c(1,3,6,9),
+#   eta = c(0.1, 0.01, 0.001),
+#   gamma = c(0, 0.3, 0.5, 0.7, 1),
+#   colsample_bytree = c(0.5, 0.75, 1),
+#   min_child_weight = c(1, 10, 15, 20),
+#   subsample = c(0.5, 0.75, 1)
+#)
+```
+
+```{r modeling_4, eval=FALSE, include=TRUE}
+# traincontrol : cross-validation (5 folds)
+xgb_trcontrol <- trainControl(method = "cv", number = 5, allowParallel = TRUE)
+
+# model without params
+xgb_model<- xgboost::xgboost(data = new_tr, 
+                    label = tr_label,
+                    verbosity = 2, 
+                    objective = "binary:logistic", 
+                    nrounds = 500, 
+                    early_stopping_rounds = 100, 
+                    trControl = xgb_trcontrol)
+
+
+
+```
+
+
+```{r modeling_5, eval=FALSE, include=TRUE}
+proportion <- train %>% group_by(A15) %>% tally() %>%  mutate(pct = round(n/sum(n),2))
+
+params <- list(
+  booster = "gbtree",
+  objective = "binary:logistic",
+  eta = 0.1, # the less, preventing overfitting
+  gamma = 1,
+  max_depth = 3, # the less, prevent overfitiing
+  min_child_weight = 1, # the more, preventing overfitting 
+  subsample = 0.75, 
+  colsample_bytree = 1,
+  eval_metric = "auc", # rmse, rmsle, error, mae, auc
+  scale_pos_weight = 162/136 # case 0 number / case 1 number (imblanced)
+)
+
+watchlist <- list(train = dtrain, test = dtest, total = dtotal, grand_total = grand_dtotal)
+
+xgb_model2 <- xgb.train(params = params, data= dtrain, nrounds = 500, trControl = xgb_trcontrol, watchlist = watchlist, early_stopping_rounds = 100)
+#xgb_model3 <- caret::train(x= grand_new_total, y = factor(grand_total_label), method = "xgbTree", trControl = xgb_trcontrol, tuneGrid = xgb_grid)
+#xgb_model3$bestTune
+```
+
+
+
+```{r valid_test, eval=FALSE, include=TRUE}
+task.test <- task.test %>% mutate(pred_pct = predict(xgb_model, grand_dtotal), pred = ifelse(pred_pct > 0.5, 1, 0))
+task.test <- task.test %>% mutate(pred_pct2 = predict(xgb_model2, grand_dtotal), pred2 = ifelse(pred_pct2 > 0.5, 1, 0))
+
+
+confusionMatrix(factor(task.test$pred), factor(task.test$A15))
+confusionMatrix(factor(task.test$pred2), factor(task.test$A15))
+```
+
