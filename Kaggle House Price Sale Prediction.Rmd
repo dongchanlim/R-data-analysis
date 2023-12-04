@@ -1,0 +1,489 @@
+---
+title: "Group Project"
+author: "Varun Selvam, Ahsan Ahmad, Richard Lim"
+date: "2023-11-26"
+output: 
+  html_document:
+    theme: flatly
+    df_print: paged
+    toc: true
+    toc_float:
+      smooth_scroll: true
+---
+```{r setup, include=FALSE}
+# Suppress warnings libraries
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE) 
+options(scipen = 2)
+```
+
+## Introduction & Project goal
+
+### Introduction
+
+In this group project, we are expecting to build the maximum predictive accuracy by using all available predictors & interactions.there is no restriction on variables to utilize, or on combinations of variables—interactions and polynomial terms are encouraged, as appropriate. 
+
+### Project goal
+
+This group project is aimed to develop a linear model predicting housing prices in Ames, IA using dataset provided in **Kaggle.com**.  Model performance benchmark for minimum estimated out-of-sample $R^2$ is 0.85.
+
+## Description of the data
+
+### Description
+There are two datasets for the group project. One is `train.csv` and the other is `test.csv` which are with 1460 and 1459 observations, respectively. Data includes the categorical & numeric features of properties (Predictors) and their corresponding `SalePrice`. (Target)
+
+
+### Data Profile
+* SalePrice - the property's sale price in dollars. This is the target variable that you're trying to predict.
+* MSSubClass: The building class
+* MSZoning: The general zoning classification
+* LotFrontage: Linear feet of street connected to property
+* LotArea: Lot size in square feet
+* Street: Type of road access
+* Alley: Type of alley access
+* LotShape: General shape of property
+* LandContour: Flatness of the property
+* Utilities: Type of utilities available
+* LotConfig: Lot configuration
+* LandSlope: Slope of property
+* Neighborhood: Physical locations within Ames city limits
+* Condition1: Proximity to main road or railroad
+* Condition2: Proximity to main road or railroad (if a second is present)
+* BldgType: Type of dwelling
+* HouseStyle: Style of dwelling
+* OverallQual: Overall material and finish quality
+* OverallCond: Overall condition rating
+* YearBuilt: Original construction date
+* YearRemodAdd: Remodel date
+* RoofStyle: Type of roof
+* RoofMatl: Roof material
+* Exterior1st: Exterior covering on house
+* Exterior2nd: Exterior covering on house (if more than one material)
+* MasVnrType: Masonry veneer type
+* MasVnrArea: Masonry veneer area in square feet
+* ExterQual: Exterior material quality
+* ExterCond: Present condition of the material on the exterior
+* Foundation: Type of foundation
+* BsmtQual: Height of the basement
+* BsmtCond: General condition of the basement
+* BsmtExposure: Walkout or garden level basement walls
+* BsmtFinType1: Quality of basement finished area
+* BsmtFinSF1: Type 1 finished square feet
+* BsmtFinType2: Quality of second finished area (if present)
+* BsmtFinSF2: Type 2 finished square feet
+* BsmtUnfSF: Unfinished square feet of basement area
+* TotalBsmtSF: Total square feet of basement area
+* Heating: Type of heating
+* HeatingQC: Heating quality and condition
+* CentralAir: Central air conditioning
+* Electrical: Electrical system
+* 1stFlrSF: First Floor square feet
+* 2ndFlrSF: Second floor square feet
+* LowQualFinSF: Low quality finished square feet (all floors)
+* GrLivArea: Above grade (ground) living area square feet
+* BsmtFullBath: Basement full bathrooms
+* BsmtHalfBath: Basement half bathrooms
+* FullBath: Full bathrooms above grade
+* HalfBath: Half baths above grade
+* Bedroom: Number of bedrooms above basement level
+* Kitchen: Number of kitchens
+* KitchenQual: Kitchen quality
+* TotRmsAbvGrd: Total rooms above grade (does not include bathrooms)
+* Functional: Home functionality rating
+* Fireplaces: Number of fireplaces
+* FireplaceQu: Fireplace quality
+* GarageType: Garage location
+* GarageYrBlt: Year garage was built
+* GarageFinish: Interior finish of the garage
+* GarageCars: Size of garage in car capacity
+* GarageArea: Size of garage in square feet
+* GarageQual: Garage quality
+* GarageCond: Garage condition
+* PavedDrive: Paved driveway
+* WoodDeckSF: Wood deck area in square feet
+* OpenPorchSF: Open porch area in square feet
+* EnclosedPorch: Enclosed porch area in square feet
+* 3SsnPorch: Three season porch area in square feet
+* ScreenPorch: Screen porch area in square feet
+* PoolArea: Pool area in square feet
+* PoolQC: Pool quality
+* Fence: Fence quality
+* MiscFeature: Miscellaneous feature not covered in other categories
+* MiscVal: $Value of miscellaneous feature
+* MoSold: Month Sold
+* YrSold: Year Sold
+* SaleType: Type of sale
+* SaleCondition: Condition of sale
+
+## Load Libraries
+
+```{r}
+# load libraries for project
+library(dplyr) 
+library(ggplot2)
+library(tidyr)
+library(rpart)
+library(rpart.plot)
+```
+
+## Load dataset
+
+```{r}
+# load Data sets
+train <- read.csv("train.csv")
+test <- read.csv("test.csv")
+```
+
+```{r}
+# 5 sameples of train.csv
+head(train)
+dim(train)
+```
+
+```{r}
+# 5 sameples of test.csv
+head(test)
+dim(test)
+```
+
+## Data Summarization
+
+### Numeric data summary
+
+```{r}
+mean <- train %>%
+  select_if(is.numeric) %>%
+  summarise_all(~mean(.x, na.rm = TRUE)) %>%
+  pivot_longer(cols = everything(), names_to = "columns", values_to = "mean")
+
+min <- train %>%
+  select_if(is.numeric) %>%
+  summarise_all(~min(.x, na.rm = TRUE)) %>%
+  pivot_longer(cols = everything(), names_to = "columns", values_to = "min")
+
+max <- train %>%
+  select_if(is.numeric) %>%
+  summarise_all(~max(.x, na.rm = TRUE)) %>%
+  pivot_longer(cols = everything(), names_to = "columns", values_to = "max")
+
+variance <- train %>%
+  select_if(is.numeric) %>%
+  summarise_all(~var(.x, na.rm = TRUE)) %>%
+  pivot_longer(cols = everything(), names_to = "columns", values_to = "variance")
+
+sd <- train %>%
+  select_if(is.numeric) %>%
+  summarise_all(~sd(.x, na.rm = TRUE)) %>%
+  pivot_longer(cols = everything(), names_to = "columns", values_to = "standard deviation")
+
+
+mean %>%
+  left_join(min, by = "columns") %>%
+  left_join(max, by = "columns") %>%
+  left_join(variance, by = "columns") %>%
+  left_join(sd, by = "columns")
+```
+
+This is a summary table of the mean, median, max, variance, and standard deviation for all of the numeric variables. Some of the variables may seem extreme, however it's plausible that these values are genuine which is why they were not removed from the model.
+
+### Categorical Data Summary
+
+```{r}
+lapply(train %>% select_if(is.character), unique)
+```
+
+## Data Missing Handling
+
+```{r}
+count_missings <- function(x) sum(is.na(x)) # Sum provides a total of how many values are missing for each variable. 
+
+# Summarizes all the missing values for each variable.
+train %>% # Data set name
+  summarize_all(count_missings) %>%
+  t()
+```
+
+## Variable Selection 
+
+```{r}
+# Methodology 1: Classification Tree (rpart function)
+train_tree <- train %>% #Assign changes to train data set to a new variable
+  select(-Id) #Remove ID as a predictor, it's not needed.
+
+house_prices_tree <- rpart(formula = SalePrice ~ ., data = train_tree) 
+# Assign tree to a variable titled "house_prices_tree".
+house_prices_tree #Display Tree
+```
+ 
+Based on this classification tree, the top predictors are: 
+
+- Overall Quality
+- Neighborhood
+- First Floor Sqft 
+- Ground Living Area
+- Basement Finished Sqft 1
+
+```{r}
+# Methodology 2: Removing all predictors with even one NA value and saving it to a dataset.
+
+without_na_train <-
+  train %>% 
+  select(names(which(colSums(is.na(.)) == 0)))
+ 
+
+# Creating a Multiple Linear Regression Model with all the remaining predictors
+model_a <- lm(SalePrice ~ ., data = without_na_train)
+model_a_summary <- summary(model_a)
+
+ 
+
+# Creating a Dataframe with Predictor/Variable name and it's corresponding P-Value and arranging it in ascending order to get the top 5 predictors
+p_values <- model_a_summary$coefficients[, "Pr(>|t|)"]
+coefficients_p_value <- data.frame(
+  Variable_name = rownames(model_a_summary$coefficients),
+  P_Value = p_values
+)
+
+
+coefficients_p_value %>% 
+  arrange(P_Value) %>% 
+  head(n = 20)
+```
+
+We have determined the predictors based on the p-value of linear model.
+
+- RoofMatlWdShngl		
+- RoofMatlCompShg	
+- RoofMatlTar&Grv	
+- RoofMatlWdShake	
+- RoofMatlRoll	
+- RoofMatlMembran		
+- RoofMatlMeta	
+- X2ndFlrSF	
+- X1stFlrSF	
+- BsmtFinSF1
+
+
+```{r}
+
+#Summarize any missing variables in the train dataset
+train %>% #Dat Set name
+  select(OverallQual, Neighborhood, X1stFlrSF, GrLivArea, BsmtFinSF1, RoofMatl, SaleType, Utilities, Condition1, YearBuilt, X2ndFlrSF, SaleType, KitchenQual, LotArea, ExterQual, OverallCond, BsmtFinSF2 ) %>% # Predictors that this model will utilize.
+  summarize_all(count_missings)
+```
+
+Based on the two methodologies (Rpart tree & non-na linear model) combined, we are selecting our predictors as
+
+- OverallQual
+- Neighborhood 
+- X1stFlrSF
+- GrLivArea
+- BsmtFinSF1
+- RoofMatl
+- SaleType
+- Utilities
+- Condition1
+- YearBuilt
+- X2ndFlrSF
+- SaleType
+- KitchenQual
+- LotArea
+- ExterQual
+- OverallCond
+- BsmtFinSF2
+
+## Data Cleansing
+
+```{r}
+ggplot(data = train, mapping = aes(x = SalePrice)) +
+  geom_histogram(fill = 'orange') +
+  labs(title = "Histogram of Sale Price") +
+  theme_classic()
+
+```
+
+The Histogram for Sale Price is right skewed, however much of the data still appears to near the center.
+
+## Change variables as factor
+
+```{r}
+# overwrite original dataset with the new changes
+train <- train %>% 
+  mutate(OverallQual = factor(OverallQual)) %>% # Change overall quality to a factor.
+  mutate(Neighborhood = factor(Neighborhood)) %>% 
+  mutate(RoofMatl = factor(RoofMatl)) %>% 
+  mutate(SaleType = factor(SaleType)) %>% 
+  mutate(Utilities = factor(Utilities)) %>% 
+  mutate(Condition1 = factor(Condition1)) %>% 
+  mutate(KitchenQual = factor(KitchenQual)) %>% 
+  mutate(ExterQual = factor(ExterQual)) %>% 
+  mutate(OverallCond = factor(OverallCond))
+
+```
+
+
+
+## Data split for validation
+
+```{r}
+#Set seed for reproducibility
+set.seed(100) 
+index <- sample(x = 1:nrow(train), size = nrow(train)*.7, replace = F) # Randomly sample 70% of the rows
+
+head(index) # Display row numbers.
+
+# Subset train using the index and assign it to train_fold.
+train_fold <- train[index, ]
+
+# Subset all remaining rows into the validation fold.
+validation_fold <- train[-index, ]
+
+```
+
+## Interaction model
+
+### Interaction 1 
+
+```{r}
+train %>%
+  ggplot(aes(x = X1stFlrSF, y = SalePrice, color = Neighborhood)) +
+  geom_point(show.legend = FALSE) +
+  geom_smooth(method = lm, se = FALSE, show.legend = FALSE) +
+  labs(title = "Interaction between sqft of first floor and salesprice by neighborhood",
+       subtitle= "There is an interaction between two variables with diffrent slopes per each subgroup") +
+  theme_classic()
+```
+
+### Interaction 2
+
+```{r}
+train %>%
+  ggplot(aes(x = X2ndFlrSF, y = SalePrice, color = Neighborhood)) +
+  geom_point(show.legend = FALSE) +
+  geom_smooth(method = lm, se = FALSE, show.legend = FALSE) +
+  labs(title = "Interaction between SalesPrice and sqft of second floor by neighborhood",
+       subtitle= "There is an interaction between two variables with diffrent slopes per each subgroup") +
+  theme_classic()
+```
+
+## Data Modeling
+
+```{r}
+SalePrice_Model <- lm(SalePrice ~ OverallQual + YearBuilt + Neighborhood * X1stFlrSF + GrLivArea + BsmtFinSF1 + RoofMatl + Neighborhood * X2ndFlrSF + SaleType + Utilities + Condition1 + KitchenQual + LotArea + ExterQual + OverallCond + BsmtFinSF2, data = train_fold) #Data must be train-fold becasue we are training the model, so train_fold data should be used.
+
+summary(SalePrice_Model) #Provide summary of the Sale Price Model.
+```
+
+```{r}
+rmse <- function(observed, predicted) sqrt(mean((observed - predicted)^2)) #Create RMSE function for test data
+
+R2 <- function(observed, predicted){ #Create R-Squared function for test data
+  TSS <- sum((observed - mean(observed))^2)
+  RSS <- sum((observed - predicted)^2)
+  1- RSS/TSS
+}
+
+# Calculate Estimated RMSE
+rmse(observed = train_fold$SalePrice, #observed is the SalePrice values that are already in the dataset. 
+     predicted = fitted(SalePrice_Model)) #fitted represents the values that the model predicted.
+R2(train_fold$SalePrice, fitted(SalePrice_Model))
+```
+
+The “In Sample” R-squared is .92 which means that this model explains 92% of the variation for the In Sample Data set. In the context of this model, 92% of the model’s predictions for Sale Price fit very closely with the actual values for Sale Price.
+
+ 
+
+The estimated RMSE indicates that this model’s predictions are off on average by \$20845.86 when estimating the Sale Price of a house.
+
+## Data model performance for validation
+
+```{r}
+predictions <- predict(SalePrice_Model, newdata = validation_fold)
+
+# Create functions for calculating RMSE and R-squared (necessary for estimating Out of sample performance)
+
+rmse(validation_fold$SalePrice, predictions)
+R2(validation_fold$SalePrice, predictions)
+```
+
+
+This model has an out of sample R-Squared of 87% which means that this model explains 87% of the variation in the data. In the context of this model, the 87% of the model’s predictions for Sale Price fit very closely with the actual values for Sale Price. The “In Sample” model had an R-Squared of 92% while the validation model had an R-Square of 87%.
+
+ 
+Most models will face a similar decline in R-Squared when they are ran with the validation fold data. However if a model experiences a massive decline in R-Squared, this is indicative of over-fitting. In this case the model, since there was a modest decline, this indicates that the Sale Price Model is not overfitting.
+
+ 
+
+The RMSE indicates that this model’s predictions are off on average by $29,074.05 dollars when estimating the Sale Price of a house.
+
+## Data Engineering for test dataset
+
+```{r}
+test <- test %>%  #Override test dataset with changes to make test dataset match the train dataset.
+  mutate(OverallQual = factor(OverallQual)) %>% # Change overall quality to a factor.
+  mutate(Neighborhood = factor(Neighborhood)) %>% 
+  mutate(RoofMatl = factor(RoofMatl)) %>% 
+  mutate(SaleType = factor(SaleType)) %>% 
+  mutate(Utilities = factor(Utilities)) %>%
+  mutate(Condition1 = factor(Condition1)) %>% 
+  mutate(KitchenQual = factor(KitchenQual)) %>% 
+  mutate(ExterQual = factor(ExterQual)) %>%
+  mutate(OverallCond = factor(OverallCond))
+
+# 3. Checking for NA Values for our five selected predictors in the test set.
+count_missings <- function(x) sum(is.na(x))
+
+test %>% 
+  select(RoofMatl, X1stFlrSF, X2ndFlrSF, BsmtFinSF1 , OverallQual, Utilities, SaleType, GrLivArea, Neighborhood, Condition1, KitchenQual, LotArea, ExterQual, OverallCond, BsmtFinSF2) %>% 
+  summarize_all(count_missings) 
+
+# Replacing the missing value for BsmtFinSF1 with the median
+
+test$BsmtFinSF1 <- as.numeric((test$BsmtFinSF1))
+test$BsmtFinSF2 <- as.numeric((test$BsmtFinSF2))
+
+test <- test %>% 
+  mutate(BsmtFinSF1 = replace_na(data = BsmtFinSF1, replace = median(BsmtFinSF1, na.rm = TRUE))) %>% 
+  mutate(Utilities = replace_na(data = Utilities, replace = "AllPub")) %>% 
+  mutate(SaleType = replace_na(data = SaleType, replace = "New")) %>%
+  mutate(KitchenQual = replace_na(data = KitchenQual, replace = "Gd")) %>% 
+  mutate(BsmtFinSF2 = replace_na(data = BsmtFinSF2, replace = median(BsmtFinSF1, na.rm = TRUE)))
+```
+
+```{r}
+test %>% 
+  select(RoofMatl, X1stFlrSF, X2ndFlrSF, BsmtFinSF1 , OverallQual, Utilities, SaleType, GrLivArea, Neighborhood, Condition1, KitchenQual, LotArea, ExterQual, OverallCond, BsmtFinSF2) %>% 
+  summarize_all(count_missings) 
+```
+There are some missing values in the test dataset. We will address this by imputing the missing values in the variable with the median and mode.
+
+After replacing the missing values with the median, we will check one more time. Based of the table, there are no missing values, which indicates that the data cleaning was successful.
+
+## Kaggle Submission
+
+```{r}
+# Assign a new linear regression model with the same predictors to a new variable. Use the full data set this time.
+kaggle_model <- lm(SalePrice ~ OverallQual + YearBuilt + Neighborhood * X1stFlrSF + GrLivArea + BsmtFinSF1 + RoofMatl + Neighborhood * X2ndFlrSF + SaleType + Utilities + Condition1 + KitchenQual + LotArea + ExterQual + OverallCond + BsmtFinSF2, data = train) 
+
+# Utilize newdata argument.
+kaggle_predictions <- predict(kaggle_model, newdata = test) 
+
+#Object for predict is the kaggle_model which is the regression model that is using the full train set.
+
+# see first few predictions
+head(kaggle_predictions)
+
+kaggle_submission <- test %>% #Assign changes from test to new variable called kaggle_submission
+  select(Id) %>% #Match Kaggle Competition format rules by selecting ID
+  mutate(SalePrice = kaggle_predictions) #Create new column in data set that contains the predictions for the Sale Price values.
+
+# Check
+head(kaggle_submission) #Check that formatting is correct.
+
+# write to csv
+write.csv(kaggle_submission, "kaggle_submission_14.csv", row.names = F)
+```
+
+## Kaggle Rank & Score
+
+- Rank: 2767
+- Score: 0.14910
