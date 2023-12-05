@@ -4,6 +4,7 @@ author: "Varun Selvam, Ahsan Ahmad, Richard Lim"
 date: "2023-11-26"
 output: 
   html_document:
+    output: github_document
     theme: flatly
     df_print: paged
     toc: true
