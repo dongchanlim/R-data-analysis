@@ -2,14 +2,7 @@
 title: "Group Project"
 author: "Varun Selvam, Ahsan Ahmad, Richard Lim"
 date: "2023-11-26"
-output: 
-  rmarkdown::github_document
-  html_document:
-    theme: flatly
-    df_print: paged
-    toc: true
-    toc_float:
-      smooth_scroll: true
+output: rmarkdown::github_document
 ---
 
 ```{r setup, include=FALSE}
