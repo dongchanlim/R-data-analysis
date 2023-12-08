@@ -2,4 +2,3 @@
 
 - HOUSE PRICE PREDICTION:
   [code](/kaggle_competiton/README.md)
-  [render](/kaggle_competiton/Kaggle House Pirce Sale Prediction Model.html)
